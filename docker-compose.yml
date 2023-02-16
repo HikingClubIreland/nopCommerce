@@ -1,19 +1,32 @@
-version: "3.4"
+version: "4.5"
 services:
     nopcommerce_web:
-        build: .
-        container_name: nopcommerce
+        image: "nopcommerceteam/nopcommerce:4.50.4"
+        container_name: hci_nopcommerce
         ports:
             - "80:80"
         depends_on:
-            - nopcommerce_database
-    nopcommerce_database:
-        image: "mcr.microsoft.com/mssql/server:2019-latest"
-        container_name: nopcommerce_mssql_server
+            - hci_db
+        volumes:
+            - web_plugins:/app/Plugins
+            - web_themes:/app/Themes
+            - web_content:/app/wwwroot
+    hci_db:
+        image: "mysql:8.0"
+        container_name: hci_nopcommerce_mysql_server
+        restart: always
         environment:
-            SA_PASSWORD: "nopCommerce_db_password"
-            ACCEPT_EULA: "Y"
-            MSSQL_PID: "Express"
+            MYSQL_ROOT_PASSWORD: "test123"
+            MYSQL_DATABASE: hci_db
+            MYSQL_USER: hci_admin_db
+            MYSQL_PASSWORD: "test123456"
+        ports:
+            - "6033:3306"
+        volumes:
+            - db_data:/var/lib/mysql
 
 volumes:
-  nopcommerce_data:            
+  web_plugins:
+  web_themes:
+  web_content:
+  db_data:
