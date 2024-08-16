@@ -4,7 +4,7 @@ services:
         image: "nopcommerceteam/nopcommerce:4.50.4"
         container_name: hci_nopcommerce
         ports:
-            - "80:80"
+            - "8010:80"
         depends_on:
             - hci_db
         volumes:
