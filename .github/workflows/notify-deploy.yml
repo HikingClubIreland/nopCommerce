@@ -1,0 +1,16 @@
+name: Notify deploy repo
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger image rebuild in deploy repo
+        run: |
+          gh api repos/HikingClubIreland/hci-nop-deploy/dispatches \
+            -f event_type=nop-source-updated
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_REPO_PAT }}
