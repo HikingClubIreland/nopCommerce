@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
@@ -35,6 +35,7 @@ using Nop.Services.Helpers;
 using Nop.Services.Html;
 using Nop.Services.Localization;
 using Nop.Services.Logging;
+using Nop.Services.Media;
 using Nop.Services.News;
 using Nop.Services.Orders;
 using Nop.Services.Payments;
@@ -74,6 +75,7 @@ public partial class MessageTokenProvider : IMessageTokenProvider
     protected readonly INewsService _newsService;
     protected readonly IOrderService _orderService;
     protected readonly IPaymentPluginManager _paymentPluginManager;
+    protected readonly IPictureService _pictureService;
     protected readonly IPaymentService _paymentService;
     protected readonly IPriceFormatter _priceFormatter;
     protected readonly IProductService _productService;
@@ -119,6 +121,7 @@ public partial class MessageTokenProvider : IMessageTokenProvider
         IOrderService orderService,
         IPaymentPluginManager paymentPluginManager,
         IPaymentService paymentService,
+        IPictureService pictureService,
         IPriceFormatter priceFormatter,
         IProductService productService,
         IRewardPointService rewardPointService,
@@ -157,6 +160,7 @@ public partial class MessageTokenProvider : IMessageTokenProvider
         _orderService = orderService;
         _paymentPluginManager = paymentPluginManager;
         _paymentService = paymentService;
+        _pictureService = pictureService;
         _priceFormatter = priceFormatter;
         _productService = productService;
         _rewardPointService = rewardPointService;
@@ -561,14 +565,7 @@ public partial class MessageTokenProvider : IMessageTokenProvider
         var language = await _languageService.GetLanguageByIdAsync(languageId);
 
         var sb = new StringBuilder();
-        sb.AppendLine("<table border=\"0\" style=\"width:100%;\">");
-
-        sb.AppendLine($"<tr style=\"background-color:{_templatesSettings.Color1};text-align:center;\">");
-        sb.AppendLine($"<th>{await _localizationService.GetResourceAsync("Messages.Order.Product(s).Name", languageId)}</th>");
-        sb.AppendLine($"<th>{await _localizationService.GetResourceAsync("Messages.Order.Product(s).Price", languageId)}</th>");
-        sb.AppendLine($"<th>{await _localizationService.GetResourceAsync("Messages.Order.Product(s).Quantity", languageId)}</th>");
-        sb.AppendLine($"<th>{await _localizationService.GetResourceAsync("Messages.Order.Product(s).Total", languageId)}</th>");
-        sb.AppendLine("</tr>");
+        sb.AppendLine("<table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;\">");
 
         var table = await _orderService.GetOrderItemsAsync(order.Id, vendorId: vendorId);
         for (var i = 0; i <= table.Count - 1; i++)
@@ -580,35 +577,61 @@ public partial class MessageTokenProvider : IMessageTokenProvider
             if (product == null)
                 continue;
 
-            sb.AppendLine($"<tr style=\"background-color: {_templatesSettings.Color2};text-align: center;\">");
-            //product name
+            if (i > 0)
+            {
+                sb.AppendLine("<tr><td colspan=\"3\" style=\"padding:0;\"><hr style=\"border:none;border-top:1px solid #e8e8e8;margin:0;\" /></td></tr>");
+            }
+
             var productName = await _localizationService.GetLocalizedAsync(product, x => x.Name, languageId);
+            var shortDescription = await _localizationService.GetLocalizedAsync(product, x => x.ShortDescription, languageId);
 
-            sb.AppendLine("<td style=\"padding: 0.6em 0.4em;text-align: left;\">" + WebUtility.HtmlEncode(productName));
+            var pictureUrl = string.Empty;
+            var productPicture = (await _pictureService.GetPicturesByProductIdAsync(product.Id, 1)).FirstOrDefault();
+            if (productPicture != null)
+            {
+                var (url, _) = await _pictureService.GetPictureUrlAsync(productPicture, 80);
+                pictureUrl = url;
+            }
 
-            //add download link
-            if (await _orderService.IsDownloadAllowedAsync(orderItem))
+            string unitPriceStr;
+            if (order.CustomerTaxDisplayType == TaxDisplayType.IncludingTax)
             {
-                var downloadUrl = await RouteUrlAsync(order.StoreId, NopRouteNames.Standard.GET_DOWNLOAD, new { orderItemId = orderItem.OrderItemGuid });
-                var downloadLink = $"<a class=\"link\" href=\"{downloadUrl}\">{await _localizationService.GetResourceAsync("Messages.Order.Product(s).Download", languageId)}</a>";
-                sb.AppendLine("<br />");
-                sb.AppendLine(downloadLink);
+                var unitPriceInclTaxInCustomerCurrency = _currencyService.ConvertCurrency(orderItem.UnitPriceInclTax, order.CurrencyRate);
+                unitPriceStr = await _priceFormatter.FormatPriceAsync(unitPriceInclTaxInCustomerCurrency, true, order.CustomerCurrencyCode, languageId, true);
             }
-            //add download link
-            if (await _orderService.IsLicenseDownloadAllowedAsync(orderItem))
+            else
             {
-                var licenseUrl = await RouteUrlAsync(order.StoreId, NopRouteNames.Standard.GET_LICENSE, new { orderItemId = orderItem.OrderItemGuid });
-                var licenseLink = $"<a class=\"link\" href=\"{licenseUrl}\">{await _localizationService.GetResourceAsync("Messages.Order.Product(s).License", languageId)}</a>";
-                sb.AppendLine("<br />");
-                sb.AppendLine(licenseLink);
+                var unitPriceExclTaxInCustomerCurrency = _currencyService.ConvertCurrency(orderItem.UnitPriceExclTax, order.CurrencyRate);
+                unitPriceStr = await _priceFormatter.FormatPriceAsync(unitPriceExclTaxInCustomerCurrency, true, order.CustomerCurrencyCode, languageId, false);
             }
-            //attributes
+
+            sb.AppendLine("<tr>");
+
+            if (!string.IsNullOrEmpty(pictureUrl))
+            {
+                sb.AppendLine($"<td style=\"padding:12px 12px 12px 0;vertical-align:top;width:70px;\">");
+                sb.AppendLine($"<img src=\"{pictureUrl}\" alt=\"{WebUtility.HtmlEncode(productName)}\" width=\"65\" height=\"65\" style=\"display:block;border-radius:8px;object-fit:cover;\" />");
+                sb.AppendLine("</td>");
+            }
+            else
+            {
+                sb.AppendLine("<td style=\"padding:12px 12px 12px 0;vertical-align:top;width:70px;\">&nbsp;</td>");
+            }
+
+            sb.AppendLine("<td style=\"padding:12px 8px;vertical-align:top;\">");
+            sb.AppendLine($"<span style=\"font-size:14px;font-weight:bold;color:#0d8a5e;display:block;margin-bottom:4px;\">{WebUtility.HtmlEncode(productName)}</span>");
+
+            if (!string.IsNullOrEmpty(shortDescription))
+            {
+                var plainDescription = _htmlFormatter.StripTags(_htmlFormatter.ConvertHtmlToPlainText(shortDescription, decode: true));
+                sb.AppendLine($"<span style=\"font-size:12px;color:#666666;display:block;line-height:1.4;margin-bottom:6px;\">{WebUtility.HtmlEncode(plainDescription)}</span>");
+            }
+
             if (!string.IsNullOrEmpty(orderItem.AttributeDescription))
             {
-                sb.AppendLine("<br />");
-                sb.AppendLine(orderItem.AttributeDescription);
+                sb.AppendLine($"<span style=\"font-size:12px;color:#666666;display:block;line-height:1.4;margin-bottom:6px;\">{orderItem.AttributeDescription}</span>");
             }
-            //rental info
+
             if (product.IsRental)
             {
                 var rentalStartDate = orderItem.RentalStartDateUtc.HasValue
@@ -617,71 +640,50 @@ public partial class MessageTokenProvider : IMessageTokenProvider
                     ? _productService.FormatRentalDate(product, orderItem.RentalEndDateUtc.Value) : string.Empty;
                 var rentalInfo = string.Format(await _localizationService.GetResourceAsync("Order.Rental.FormattedDate", languageId),
                     rentalStartDate, rentalEndDate);
-                sb.AppendLine("<br />");
-                sb.AppendLine(rentalInfo);
+                sb.AppendLine($"<span style=\"font-size:12px;color:#666666;display:block;margin-bottom:6px;\">{rentalInfo}</span>");
             }
-            //SKU
+
             if (_catalogSettings.ShowSkuOnProductDetailsPage)
             {
                 var sku = await _productService.FormatSkuAsync(product, orderItem.AttributesXml);
                 if (!string.IsNullOrEmpty(sku))
                 {
-                    sb.AppendLine("<br />");
-                    sb.AppendLine(string.Format(await _localizationService.GetResourceAsync("Messages.Order.Product(s).SKU", languageId), WebUtility.HtmlEncode(sku)));
+                    sb.AppendLine($"<span style=\"font-size:11px;color:#999999;display:block;margin-bottom:6px;\">{string.Format(await _localizationService.GetResourceAsync("Messages.Order.Product(s).SKU", languageId), WebUtility.HtmlEncode(sku))}</span>");
                 }
+            }
+
+            if (await _orderService.IsDownloadAllowedAsync(orderItem))
+            {
+                var downloadUrl = await RouteUrlAsync(order.StoreId, NopRouteNames.Standard.GET_DOWNLOAD, new { orderItemId = orderItem.OrderItemGuid });
+                var downloadText = await _localizationService.GetResourceAsync("Messages.Order.Product(s).Download", languageId);
+                sb.AppendLine($"<a href=\"{downloadUrl}\" style=\"display:inline-block;padding:6px 16px;font-size:12px;font-weight:bold;color:#ffffff;background-color:#0d8a5e;border-radius:5px;text-decoration:none;margin-top:4px;\">{downloadText}</a>");
+            }
+
+            if (await _orderService.IsLicenseDownloadAllowedAsync(orderItem))
+            {
+                var licenseUrl = await RouteUrlAsync(order.StoreId, NopRouteNames.Standard.GET_LICENSE, new { orderItemId = orderItem.OrderItemGuid });
+                var licenseText = await _localizationService.GetResourceAsync("Messages.Order.Product(s).License", languageId);
+                sb.AppendLine($"<a href=\"{licenseUrl}\" style=\"display:inline-block;padding:6px 16px;font-size:12px;font-weight:bold;color:#ffffff;background-color:#0d8a5e;border-radius:5px;text-decoration:none;margin-top:4px;margin-left:6px;\">{licenseText}</a>");
             }
 
             sb.AppendLine("</td>");
 
-            string unitPriceStr;
-            if (order.CustomerTaxDisplayType == TaxDisplayType.IncludingTax)
-            {
-                //including tax
-                var unitPriceInclTaxInCustomerCurrency = _currencyService.ConvertCurrency(orderItem.UnitPriceInclTax, order.CurrencyRate);
-                unitPriceStr = await _priceFormatter.FormatPriceAsync(unitPriceInclTaxInCustomerCurrency, true, order.CustomerCurrencyCode, languageId, true);
-            }
-            else
-            {
-                //excluding tax
-                var unitPriceExclTaxInCustomerCurrency = _currencyService.ConvertCurrency(orderItem.UnitPriceExclTax, order.CurrencyRate);
-                unitPriceStr = await _priceFormatter.FormatPriceAsync(unitPriceExclTaxInCustomerCurrency, true, order.CustomerCurrencyCode, languageId, false);
-            }
-
-            sb.AppendLine($"<td style=\"padding: 0.6em 0.4em;text-align: right;\">{unitPriceStr}</td>");
-
-            sb.AppendLine($"<td style=\"padding: 0.6em 0.4em;text-align: center;\">{orderItem.Quantity}</td>");
-
-            string priceStr;
-            if (order.CustomerTaxDisplayType == TaxDisplayType.IncludingTax)
-            {
-                //including tax
-                var priceInclTaxInCustomerCurrency = _currencyService.ConvertCurrency(orderItem.PriceInclTax, order.CurrencyRate);
-                priceStr = await _priceFormatter.FormatPriceAsync(priceInclTaxInCustomerCurrency, true, order.CustomerCurrencyCode, languageId, true);
-            }
-            else
-            {
-                //excluding tax
-                var priceExclTaxInCustomerCurrency = _currencyService.ConvertCurrency(orderItem.PriceExclTax, order.CurrencyRate);
-                priceStr = await _priceFormatter.FormatPriceAsync(priceExclTaxInCustomerCurrency, true, order.CustomerCurrencyCode, languageId, false);
-            }
-
-            sb.AppendLine($"<td style=\"padding: 0.6em 0.4em;text-align: right;\">{priceStr}</td>");
+            sb.AppendLine($"<td style=\"padding:12px 0 12px 8px;vertical-align:top;text-align:right;white-space:nowrap;\">");
+            sb.AppendLine($"<span style=\"font-size:15px;font-weight:bold;color:#333333;\">{unitPriceStr}</span>");
+            sb.AppendLine("</td>");
 
             sb.AppendLine("</tr>");
         }
 
         if (vendorId == 0)
         {
-            //we render checkout attributes and totals only for store owners (hide for vendors)
-
             if (!string.IsNullOrEmpty(order.CheckoutAttributeDescription))
             {
-                sb.AppendLine("<tr><td style=\"text-align:right;\" colspan=\"1\">&nbsp;</td><td colspan=\"3\" style=\"text-align:right\">");
+                sb.AppendLine("<tr><td colspan=\"3\" style=\"text-align:right;padding-top:12px;\">");
                 sb.AppendLine(order.CheckoutAttributeDescription);
                 sb.AppendLine("</td></tr>");
             }
 
-            //totals
             await WriteTotalsAsync(order, language, sb);
         }
 
@@ -814,32 +816,34 @@ public partial class MessageTokenProvider : IMessageTokenProvider
         var orderTotalInCustomerCurrency = _currencyService.ConvertCurrency(order.OrderTotal, order.CurrencyRate);
         var cusTotal = await _priceFormatter.FormatPriceAsync(orderTotalInCustomerCurrency, true, order.CustomerCurrencyCode, false, languageId);
 
+        sb.AppendLine("<tr><td colspan=\"3\" style=\"padding:0;\"><hr style=\"border:none;border-top:1px solid #e0e0e0;margin:8px 0;\" /></td></tr>");
+
         //subtotal
-        sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.SubTotal", languageId)}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusSubTotal}</strong></td></tr>");
+        sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.SubTotal", languageId)}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusSubTotal}</strong></td></tr>");
 
         //discount (applied to order subtotal)
         if (displaySubTotalDiscount)
         {
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.SubTotalDiscount", languageId)}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusSubTotalDiscount}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.SubTotalDiscount", languageId)}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusSubTotalDiscount}</strong></td></tr>");
         }
 
         //shipping
         if (displayShipping)
         {
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.Shipping", languageId)}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusShipTotal}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.Shipping", languageId)}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusShipTotal}</strong></td></tr>");
         }
 
         //payment method fee
         if (displayPaymentMethodFee)
         {
             var paymentMethodFeeTitle = await _localizationService.GetResourceAsync("Messages.Order.PaymentMethodAdditionalFee", languageId);
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{paymentMethodFeeTitle}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusPaymentMethodAdditionalFee}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{paymentMethodFeeTitle}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusPaymentMethodAdditionalFee}</strong></td></tr>");
         }
 
         //tax
         if (displayTax)
         {
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.Tax", languageId)}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusTaxTotal}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.Tax", languageId)}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusTaxTotal}</strong></td></tr>");
         }
 
         if (displayTaxRates)
@@ -849,14 +853,14 @@ public partial class MessageTokenProvider : IMessageTokenProvider
                 var taxRate = string.Format(await _localizationService.GetResourceAsync("Messages.Order.TaxRateLine"),
                     _priceFormatter.FormatTaxRate(item.Key));
                 var taxValue = await _priceFormatter.FormatPriceAsync(item.Value, true, order.CustomerCurrencyCode, false, languageId);
-                sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{taxRate}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{taxValue}</strong></td></tr>");
+                sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{taxRate}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{taxValue}</strong></td></tr>");
             }
         }
 
         //discount
         if (displayDiscount)
         {
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.TotalDiscount", languageId)}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusDiscount}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.TotalDiscount", languageId)}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusDiscount}</strong></td></tr>");
         }
 
         //gift cards
@@ -866,7 +870,7 @@ public partial class MessageTokenProvider : IMessageTokenProvider
                 WebUtility.HtmlEncode((await _giftCardService.GetGiftCardByIdAsync(gcuh.GiftCardId))?.GiftCardCouponCode));
             var giftCardAmount = await _priceFormatter.FormatPriceAsync(-_currencyService.ConvertCurrency(gcuh.UsedValue, order.CurrencyRate), true, order.CustomerCurrencyCode,
                 false, languageId);
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{giftCardText}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{giftCardAmount}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{giftCardText}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{giftCardAmount}</strong></td></tr>");
         }
 
         //reward points
@@ -876,11 +880,11 @@ public partial class MessageTokenProvider : IMessageTokenProvider
                 -redeemedRewardPointsEntry.Points);
             var rpAmount = await _priceFormatter.FormatPriceAsync(-_currencyService.ConvertCurrency(redeemedRewardPointsEntry.UsedAmount, order.CurrencyRate), true,
                 order.CustomerCurrencyCode, false, languageId);
-            sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{rpTitle}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{rpAmount}</strong></td></tr>");
+            sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{rpTitle}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{rpAmount}</strong></td></tr>");
         }
 
         //total
-        sb.AppendLine($"<tr style=\"text-align:right;\"><td>&nbsp;</td><td colspan=\"2\" style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.OrderTotal", languageId)}</strong></td> <td style=\"background-color: {_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusTotal}</strong></td></tr>");
+        sb.AppendLine($"<tr style=\"text-align:right;\"><td colspan=\"2\" style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{await _localizationService.GetResourceAsync("Messages.Order.OrderTotal", languageId)}</strong></td><td style=\"background-color:{_templatesSettings.Color3};padding:0.6em 0.4em;\"><strong>{cusTotal}</strong></td></tr>");
     }
 
     /// <summary>
