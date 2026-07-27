@@ -13,7 +13,11 @@ public static class NopVersion
     /// <summary>
     /// Gets the minor store version
     /// </summary>
+<<<<<<< HEAD
     public const string MINOR_VERSION = "0";
+=======
+    public const string MINOR_VERSION = "6";
+>>>>>>> upstream/master
 
     /// <summary>
     /// Gets the full store version

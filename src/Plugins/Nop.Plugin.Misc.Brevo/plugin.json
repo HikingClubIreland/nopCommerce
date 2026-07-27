@@ -2,8 +2,13 @@
   "Group": "Misc",
   "FriendlyName": "Brevo",
   "SystemName": "Misc.Brevo",
+<<<<<<< HEAD
   "Version": "5.00.3",
   "SupportedVersions": [ "5.00" ],
+=======
+  "Version": "4.90.9",
+  "SupportedVersions": [ "4.90" ],
+>>>>>>> upstream/master
   "Author": "nopCommerce team",
   "DisplayOrder": 1,
   "FileName": "Nop.Plugin.Misc.Brevo.dll",
