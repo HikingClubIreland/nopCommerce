@@ -466,7 +466,7 @@ public partial class PictureService : IPictureService
             try
             {
                 using var image = SKBitmap.Decode(filePath);
-                var codec = SKCodec.Create(filePath);
+                using var codec = SKCodec.Create(filePath);
                 var format = codec.EncodedFormat;
                 var pictureBinary = ImageResize(image, format, targetSize);
                 var mimeType = GetMimeTypeFromFileName(thumbFileName);
