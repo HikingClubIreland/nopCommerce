@@ -2,8 +2,13 @@
   "Group": "Misc",
   "FriendlyName": "\"Request for quote\" and \"Quotes\"",
   "SystemName": "Misc.RFQ",
+<<<<<<< HEAD
   "Version": "5.00.10",
   "SupportedVersions": ["5.00"],
+=======
+  "Version": "4.90.14",
+  "SupportedVersions": ["4.90"],
+>>>>>>> upstream/master
   "Author": "nopCommerce team",
   "DisplayOrder": 1,
   "FileName": "Nop.Plugin.Misc.RFQ.dll",
